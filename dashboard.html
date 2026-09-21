@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="theme-color" content="#FFFFFF">
+    <link rel="icon" href="assets/logo-outlet23.png" type="image/png">
+    <title>OUTLET 23 · Dashboard Forecasting</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=Inter:wght@400;500;600&display=swap">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="page-admin page-forecast">
+
+<!-- ============ LOGIN ============ -->
+<section class="login-view" id="loginView">
+    <div class="login-card">
+        <div class="brand-badge" data-brand></div>
+        <h1 class="login-title">TIM FORECASTING</h1>
+        <p class="muted login-sub">Dashboard request produk dari outlet.</p>
+        <form id="loginForm" novalidate autocomplete="on">
+            <label class="field">
+                <span>Username</span>
+                <input type="text" id="loginUser" autocomplete="username" required>
+            </label>
+            <label class="field">
+                <span>Password</span>
+                <span class="pw-wrap">
+                    <input type="password" id="loginPass" autocomplete="current-password" required>
+                    <button type="button" class="pw-toggle" id="togglePw" aria-label="Tampilkan password">Lihat</button>
+                </span>
+            </label>
+            <div class="form-error" id="loginError" role="alert" hidden></div>
+            <button type="submit" class="btn btn-primary btn-block" id="btnLogin">LOGIN</button>
+        </form>
+        <a class="login-link" href="index.html">Buka form request outlet</a>
+    </div>
+</section>
+
+<!-- ============ DASHBOARD ============ -->
+<div class="dash-view" id="dashView" hidden>
+    <header class="topbar">
+        <div class="topbar-left">
+            <div class="brand-badge sm" data-brand></div>
+            <div>
+                <h1 class="topbar-title">Request Produk Outlet</h1>
+                <p class="topbar-sub" id="lastUpdated">Belum dimuat</p>
+            </div>
+        </div>
+        <div class="topbar-actions">
+            <button type="button" class="btn btn-ghost btn-sm" id="btnRefresh" title="Muat ulang data">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 4v5h-5"/></svg>
+                <span class="hide-sm">Refresh</span>
+            </button>
+            <button type="button" class="btn btn-dark btn-sm" id="btnLogout">Logout</button>
+        </div>
+    </header>
+
+    <main class="dash-main">
+        <div class="notice" id="dashNotice" role="status" hidden></div>
+
+        <section class="panel filters" aria-label="Filter">
+            <div class="filter-grid fc-filters">
+                <label class="field">
+                    <span>Tanggal</span>
+                    <select id="fDate">
+                        <option value="all">Semua</option>
+                        <option value="today">Hari ini</option>
+                        <option value="7">7 hari terakhir</option>
+                        <option value="30">30 hari terakhir</option>
+                        <option value="custom">Pilih tanggal</option>
+                    </select>
+                </label>
+                <label class="field"><span>Region</span><select id="fRegion"></select></label>
+                <label class="field"><span>Outlet</span><select id="fOutlet"></select></label>
+                <label class="field"><span>Kategori</span><select id="fCategory"></select></label>
+                <label class="field"><span>Status</span><select id="fStatus"></select></label>
+                <div class="field field-action">
+                    <span>&nbsp;</span>
+                    <button type="button" class="btn btn-ghost" id="btnReset">RESET FILTER</button>
+                </div>
+            </div>
+            <div class="custom-range" id="customRange" hidden>
+                <label class="field"><span>Dari</span><input type="date" id="fFrom"></label>
+                <label class="field"><span>Sampai</span><input type="date" id="fTo"></label>
+            </div>
+        </section>
+
+        <section class="summary-grid" aria-label="Ringkasan">
+            <article class="stat stat-hero">
+                <p class="stat-label">Total Request</p>
+                <p class="stat-value" id="sTotal">0</p>
+                <p class="stat-sub">sesuai filter</p>
+            </article>
+            <article class="stat">
+                <p class="stat-label">7 Hari Terakhir</p>
+                <p class="stat-value" id="sWeek">0</p>
+                <p class="stat-sub" id="sToday"></p>
+            </article>
+            <article class="stat">
+                <p class="stat-label">Outlet Pengaju</p>
+                <p class="stat-value" id="sOutlets">0</p>
+                <p class="stat-sub" id="sProducts"></p>
+            </article>
+            <article class="stat">
+                <p class="stat-label">Produk Teratas</p>
+                <p class="stat-value stat-text" id="sTop">–</p>
+                <p class="stat-sub" id="sTopN"></p>
+            </article>
+        </section>
+
+        <section class="panel table-card" aria-label="Data request">
+            <div class="tabs" role="tablist">
+                <button type="button" class="tab-btn" role="tab" id="tabRekap" aria-selected="true" aria-controls="panelRekap">Rekap per Produk</button>
+                <button type="button" class="tab-btn" role="tab" id="tabList" aria-selected="false" aria-controls="panelList">Semua Request</button>
+            </div>
+            <div class="table-head">
+                <p class="muted" id="tabHint">Produk diurutkan dari yang paling banyak direquest. Klik baris untuk melihat detail request.</p>
+                <div class="table-tools">
+                    <div class="search-box sm">
+                        <span class="search-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg></span>
+                        <input type="search" id="search" placeholder="Cari produk, outlet, PIC…" aria-label="Cari">
+                    </div>
+                    <button type="button" class="btn btn-primary btn-sm" id="btnExport">EXPORT CSV</button>
+                </div>
+            </div>
+
+            <div id="panelRekap" role="tabpanel" aria-labelledby="tabRekap">
+                <div class="table-wrap">
+                    <table class="data-table rekap-table">
+                        <thead>
+                            <tr>
+                                <th>Produk</th>
+                                <th>Kategori</th>
+                                <th class="num">Request</th>
+                                <th class="num">Outlet</th>
+                                <th>Terakhir</th>
+                            </tr>
+                        </thead>
+                        <tbody id="rekapBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="panelList" role="tabpanel" aria-labelledby="tabList" hidden>
+                <div class="table-wrap">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Tanggal</th>
+                                <th>Outlet</th>
+                                <th>PIC</th>
+                                <th>Produk</th>
+                                <th>Catatan</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="listBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="table-foot">
+                <span id="tableInfo" class="muted"></span>
+                <div class="pager" id="pager"></div>
+            </div>
+        </section>
+        <p class="score-legend">Status request diubah langsung di Google Sheets (kolom Status, sheet OUTLET_REQUEST).</p>
+    </main>
+</div>
+
+<div class="loading-overlay" id="loadingOverlay" hidden>
+    <div class="spinner lg"></div>
+    <p>Memuat data…</p>
+</div>
+
+<script src="config.js"></script>
+<script src="data.js"></script>
+<script src="auth.js"></script>
+<script src="dashboard.js"></script>
+</body>
+</html>

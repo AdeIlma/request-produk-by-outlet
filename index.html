@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="theme-color" content="#FFFFFF">
+    <link rel="icon" href="assets/logo-outlet23.png" type="image/png">
+    <link rel="apple-touch-icon" href="assets/logo-outlet23.png">
+    <title>OUTLET 23 · Request Produk ke Forecasting</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=Inter:wght@400;500;600&display=swap">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="page-customer page-internal" data-screen="form">
+
+<a class="skip-link" href="#app">Lewati ke konten</a>
+
+<header class="cx-topbar">
+    <div class="cx-topbar-in">
+        <span class="brand-badge sm" data-brand></span>
+        <span class="cx-topbar-tag">Request Produk · Internal</span>
+    </div>
+</header>
+
+<main class="cx-main" id="app" tabindex="-1">
+
+    <!-- ============ FORM ============ -->
+    <section class="screen is-active" id="screenForm" aria-labelledby="formTitle">
+        <div class="question-area" id="formArea"></div>
+
+        <div class="form-footer">
+            <div class="error-banner" id="errorBanner" role="alert" hidden>
+                <div class="error-text">
+                    <strong id="errorText">Maaf, request belum dapat dikirim. Silakan coba lagi.</strong>
+                    <small id="errorDetail" hidden></small>
+                </div>
+                <button type="button" class="btn btn-secondary btn-sm" id="btnRetry">Coba Lagi</button>
+            </div>
+            <nav class="form-nav" aria-label="Kirim request">
+                <button type="button" class="btn btn-secondary" id="btnReset">Reset</button>
+                <button type="button" class="btn btn-primary" id="btnSubmit">Kirim Request</button>
+            </nav>
+        </div>
+    </section>
+
+    <!-- ============ TERKIRIM ============ -->
+    <section class="screen" id="screenThanks" aria-labelledby="thanksTitle">
+        <div class="receipt">
+            <div class="receipt-head">
+                <span class="receipt-check" aria-hidden="true">
+                    <svg viewBox="0 0 52 52"><circle cx="26" cy="26" r="24" fill="none"/><path fill="none" d="M15 27l7 7 15-16"/></svg>
+                </span>
+                <h1 class="receipt-title" id="thanksTitle">Request terkirim</h1>
+                <p class="receipt-lead" id="thanksLead">Request kamu sudah diterima tim forecasting.</p>
+            </div>
+            <dl class="receipt-summary" id="thanksSummary"></dl>
+            <div class="receipt-foot receipt-actions">
+                <button type="button" class="btn btn-primary btn-block" id="btnAgain">Buat Request Lain</button>
+                <button type="button" class="btn btn-secondary btn-block" id="btnDone">Selesai</button>
+            </div>
+        </div>
+    </section>
+
+</main>
+
+<footer class="cx-footer">
+    <span class="brand-badge footer-logo" data-brand></span>
+    <p>© OUTLET 23 · Internal — Tim Forecasting</p>
+</footer>
+
+<script src="config.js"></script>
+<script src="data.js"></script>
+<script src="request.js"></script>
+</body>
+</html>
