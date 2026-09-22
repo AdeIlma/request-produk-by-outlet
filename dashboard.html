@@ -75,6 +75,7 @@
                 </label>
                 <label class="field"><span>Region</span><select id="fRegion"></select></label>
                 <label class="field"><span>Outlet</span><select id="fOutlet"></select></label>
+                <label class="field"><span>Jenis Request</span><select id="fType"></select></label>
                 <label class="field"><span>Kategori</span><select id="fCategory"></select></label>
                 <label class="field"><span>Status</span><select id="fStatus"></select></label>
                 <div class="field field-action">
@@ -92,7 +93,7 @@
             <article class="stat stat-hero">
                 <p class="stat-label">Total Request</p>
                 <p class="stat-value" id="sTotal">0</p>
-                <p class="stat-sub">sesuai filter</p>
+                <p class="stat-sub" id="sTypes">sesuai filter</p>
             </article>
             <article class="stat">
                 <p class="stat-label">7 Hari Terakhir</p>
@@ -121,7 +122,7 @@
                 <div class="table-tools">
                     <div class="search-box sm">
                         <span class="search-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg></span>
-                        <input type="search" id="search" placeholder="Cari produk, outlet, PIC…" aria-label="Cari">
+                        <input type="search" id="search" placeholder="Cari produk, kode, outlet, PIC, Request ID…" aria-label="Cari">
                     </div>
                     <button type="button" class="btn btn-primary btn-sm" id="btnExport">EXPORT CSV</button>
                 </div>
@@ -134,6 +135,7 @@
                             <tr>
                                 <th>Produk</th>
                                 <th>Kategori</th>
+                                <th>Jenis</th>
                                 <th class="num">Request</th>
                                 <th class="num">Outlet</th>
                                 <th>Terakhir</th>
@@ -152,8 +154,9 @@
                                 <th>Tanggal</th>
                                 <th>Outlet</th>
                                 <th>PIC</th>
+                                <th>Jenis</th>
                                 <th>Produk</th>
-                                <th>Catatan</th>
+                                <th>Detail</th>
                                 <th>Status</th>
                             </tr>
                         </thead>
@@ -167,7 +170,7 @@
                 <div class="pager" id="pager"></div>
             </div>
         </section>
-        <p class="score-legend">Status request diubah langsung di Google Sheets (kolom Status, sheet OUTLET_REQUEST).</p>
+        <p class="score-legend">Status request diubah langsung di Google Sheets (kolom Status, sheet OUTLET_REQUEST). Request lama (sebelum ada jenis request) ditampilkan sebagai “Request Produk” (filter Jenis Request: Semua / Request lama).</p>
     </main>
 </div>
 

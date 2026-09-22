@@ -8,13 +8,21 @@
  *           (Execute as: Me | Who has access: Anyone)
  *
  * POST (JSON sebagai text/plain):
- *   1) Kirim request : { outlet, region, pic, productRequest, productCategory, requestNote }
- *   2) Login         : { action: "login", username, password } → { token, user }
- *   3) Data          : { action: "list", token }
- *   4) Logout        : { action: "logout", token }
+ *   1) Kirim request (v2) :
+ *        { requestType, outlet, region, pic, productName, productCode, category, subcategory, unit,
+ *          newProductName, currentBufferQty, requestedBufferQty, bufferDifference, reason }
+ *        requestType: NEW_PRODUCT | EXISTING_PRODUCT | STOCK_BUFFER
+ *        → { success, requestId: "REQ-20260922-001", timestamp }
+ *      Kirim request (v1, frontend lama — tetap diterima) :
+ *        { outlet, region, pic, productRequest, productCategory, requestNote }
+ *   2) Login   : { action: "login", username, password } → { token, user }
+ *   3) Data    : { action: "list", token }
+ *   4) Logout  : { action: "logout", token }
  *
  * SHEET:
  *   - OUTLET_REQUEST : data request dari outlet (kolom Status bisa diubah tim forecasting)
+ *       Kolom lama (v1) dipertahankan; kolom baru (v2) ditambahkan di kanan secara
+ *       backward-compatible (jalankan menu "Setup / Cek Sheet" sekali setelah update).
  *   - TEAM_USERS     : akun dashboard tim forecasting (password disimpan sebagai hash)
  *
  * KEAMANAN (sama dengan Customer Feedback v4):
@@ -29,13 +37,25 @@ const SHEET_NAME = 'OUTLET_REQUEST';
 const USERS_SHEET_NAME = 'TEAM_USERS';
 const TIMEZONE = 'Asia/Jakarta';
 
+/* Kolom v1 (jangan diubah urutannya) + kolom v2 (ditambah di kanan).
+ * Mapping payload v2 → kolom:
+ *   productName  → Product Request      subcategory → Product Category (jenis: VODKA, WINE, ...)
+ *   reason       → Request Note         category    → Master Category (ALCOHOL CLASS C, ...)
+ */
 const HEADERS = [
   'Timestamp', 'Region', 'Outlet', 'PIC',
-  'Product Request', 'Product Category', 'Request Note', 'Status'
+  'Product Request', 'Product Category', 'Request Note', 'Status',
+  // --- v2 ---
+  'Request ID', 'Request Type', 'Product Code', 'Master Category', 'Unit',
+  'New Product Name', 'Current Buffer Qty', 'Requested Buffer Qty', 'Buffer Difference'
 ];
+const REQUEST_TYPES = ['NEW_PRODUCT', 'EXISTING_PRODUCT', 'STOCK_BUFFER'];
+const REQUEST_TYPE_LABELS = { NEW_PRODUCT: 'Produk Baru', EXISTING_PRODUCT: 'Produk Existing', STOCK_BUFFER: 'Stock Buffer' };
+const PROP_SEQ_PREFIX = 'REQ_SEQ_';
 const USERS_HEADERS = ['Username', 'Password', 'Name', 'Active'];
 const STATUS_OPTIONS = ['Baru', 'Ditinjau', 'Disetujui', 'Ditolak', 'Sudah tersedia'];
 const DEFAULT_STATUS = 'Baru';
+// Kategori v1 (referensi). v2 memakai subkategori dari Master Product (di-validasi di frontend).
 const CATEGORIES = ['Beer', 'Vodka', 'Whisky', 'Tequila', 'Gin', 'Wine', 'Cocktail / Mix', 'Non Alcohol', 'Lainnya'];
 
 const PROP_SUPER_USERNAME = 'SUPER_ADMIN_USERNAME';
@@ -77,36 +97,86 @@ function handleSubmit(d) {
   // Honeypot: bot mengisi field tersembunyi → pura-pura sukses, tidak disimpan
   if (cleanText(d.website, 200)) return jsonOut({ success: true, message: 'Request berhasil dikirim' });
 
+  const isV2 = !!d.requestType || d.productName !== undefined;
   const region = cleanText(d.region, 60);
   const outlet = cleanText(d.outlet, 120);
-  const pic = cleanText(d.pic, 60);
-  const product = cleanText(d.productRequest, 120);
-  const category = cleanText(d.productCategory, 60);
-  const note = cleanText(d.requestNote, 1000);
+  const pic = cleanText(d.pic, 100);
+  const reason = cleanText(isV2 ? d.reason : d.requestNote, 1000);
 
   const errors = [];
   if (!outlet) errors.push('Outlet wajib diisi');
   if (!region) errors.push('Region wajib diisi');
   if (pic.length < 2) errors.push('Nama PIC wajib diisi');
-  if (product.length < 2) errors.push('Nama produk wajib diisi');
-  if (CATEGORIES.indexOf(category) === -1) errors.push('Kategori tidak valid');
-  if (errors.length) return jsonOut({ success: false, message: errors.join('; ') });
 
-  const record = {
-    'Timestamp': new Date(),
-    'Region': region,
-    'Outlet': outlet,
-    'PIC': pic,
-    'Product Request': product,
-    'Product Category': category,
-    'Request Note': note,
-    'Status': DEFAULT_STATUS
-  };
+  let record;
+  if (!isV2) {
+    // ---- Payload v1 (frontend lama) ----
+    const product = cleanText(d.productRequest, 120);
+    const category = cleanText(d.productCategory, 60);
+    if (product.length < 2) errors.push('Nama produk wajib diisi');
+    if (!category) errors.push('Kategori tidak valid');
+    if (errors.length) return jsonOut({ success: false, message: errors.join('; ') });
+    record = {
+      'Product Request': product, 'Product Category': category, 'Request Note': reason,
+      'Request Type': '', 'Product Code': '', 'Master Category': '', 'Unit': '', 'New Product Name': '',
+      'Current Buffer Qty': '', 'Requested Buffer Qty': '', 'Buffer Difference': ''
+    };
+  } else {
+    // ---- Payload v2 ----
+    const type = cleanText(d.requestType, 30).toUpperCase();
+    const productName = cleanText(d.productName, 150);
+    const productCode = cleanText(d.productCode, 60);
+    const category = cleanText(d.category, 60).toUpperCase();
+    const subcategory = cleanText(d.subcategory, 60).toUpperCase();
+    const unit = cleanText(d.unit, 40);
+    const newName = cleanText(d.newProductName, 150);
+    const cur = toQty(d.currentBufferQty);
+    const req = toQty(d.requestedBufferQty);
+
+    if (REQUEST_TYPES.indexOf(type) === -1) errors.push('Jenis request tidak valid');
+    if (type === 'NEW_PRODUCT') {
+      if (newName.length < 2 && productName.length < 2) errors.push('Nama produk baru wajib diisi');
+      if (!subcategory) errors.push('Kategori wajib dipilih');
+    } else if (type === 'EXISTING_PRODUCT' || type === 'STOCK_BUFFER') {
+      if (productName.length < 2) errors.push('Pilih produk dari master');
+    }
+    if (type === 'STOCK_BUFFER') {
+      if (cur === null) errors.push('Stock buffer saat ini harus berupa angka >= 0');
+      if (req === null) errors.push('Stock buffer yang di-request harus berupa angka >= 0');
+    }
+    if (reason.length < 3) errors.push('Alasan request wajib diisi');
+    if (errors.length) return jsonOut({ success: false, message: errors.join('; ') });
+
+    const isBuf = type === 'STOCK_BUFFER';
+    record = {
+      'Product Request': type === 'NEW_PRODUCT' ? (newName || productName) : productName,
+      'Product Category': subcategory,
+      'Request Note': reason,
+      'Request Type': type,
+      'Product Code': type === 'NEW_PRODUCT' ? '' : productCode,
+      'Master Category': type === 'NEW_PRODUCT' ? '' : category,
+      'Unit': type === 'NEW_PRODUCT' ? '' : unit,
+      'New Product Name': type === 'NEW_PRODUCT' ? (newName || productName) : '',
+      'Current Buffer Qty': isBuf ? cur : '',
+      'Requested Buffer Qty': isBuf ? req : '',
+      'Buffer Difference': isBuf ? (req - cur) : ''
+    };
+  }
+
+  const now = new Date();
+  record['Timestamp'] = now;
+  record['Region'] = region;
+  record['Outlet'] = outlet;
+  record['PIC'] = pic;
+  record['Status'] = DEFAULT_STATUS;
 
   const lock = LockService.getScriptLock();
   lock.waitLock(15000);
+  let requestId;
   try {
     const sheet = getSheet();
+    requestId = nextRequestId(now);
+    record['Request ID'] = requestId;
     const headers = readHeaders(sheet);
     sheet.appendRow(headers.map(function (h) {
       if (!(h in record)) return '';
@@ -116,7 +186,44 @@ function handleSubmit(d) {
   } finally {
     lock.releaseLock();
   }
-  return jsonOut({ success: true, message: 'Request berhasil dikirim' });
+  return jsonOut({ success: true, message: 'Request berhasil dikirim', requestId: requestId, timestamp: formatTs(now) });
+}
+
+/* Request ID harian: REQ-YYYYMMDD-001, 002, ... (counter di Script Properties, dipanggil di dalam lock) */
+function nextRequestId(now) {
+  const day = Utilities.formatDate(now, TIMEZONE, 'yyyyMMdd');
+  const props = PropertiesService.getScriptProperties();
+  const key = PROP_SEQ_PREFIX + day;
+  let seq = Number(props.getProperty(key) || 0);
+  if (!seq) {
+    // hari baru: mulai dari jumlah baris yang sudah memakai prefix hari ini (jaga-jaga), hapus counter hari lama
+    seq = countRequestIdPrefix('REQ-' + day + '-');
+    Object.keys(props.getProperties()).forEach(function (k) {
+      if (k.indexOf(PROP_SEQ_PREFIX) === 0 && k !== key) props.deleteProperty(k);
+    });
+  }
+  seq += 1;
+  props.setProperty(key, String(seq));
+  return 'REQ-' + day + '-' + String(seq).padStart(3, '0');
+}
+
+function countRequestIdPrefix(prefix) {
+  const sheet = getSheet();
+  const col = readHeaders(sheet).indexOf('Request ID') + 1;
+  const lastRow = sheet.getLastRow();
+  if (col < 1 || lastRow < 2) return 0;
+  const vals = sheet.getRange(2, col, lastRow - 1, 1).getValues();
+  let n = 0;
+  vals.forEach(function (r) { if (String(r[0] || '').indexOf(prefix) === 0) n++; });
+  return n;
+}
+
+/* Angka bulat >= 0, selain itu null */
+function toQty(v) {
+  if (v === null || v === undefined || v === '') return null;
+  const n = Number(String(v).replace(/[^\d.-]/g, ''));
+  if (!isFinite(n) || n < 0 || Math.floor(n) !== n) return null;
+  return n;
 }
 
 /* ---------- Data dashboard ---------- */
@@ -144,7 +251,7 @@ function handleList(d) {
       data.push(obj);
     }
   }
-  return jsonOut({ success: true, count: data.length, statuses: STATUS_OPTIONS, user: publicUser(user), data: data });
+  return jsonOut({ success: true, count: data.length, statuses: STATUS_OPTIONS, requestTypes: REQUEST_TYPE_LABELS, user: publicUser(user), data: data });
 }
 
 /* ---------- Login & sesi ---------- */
@@ -309,9 +416,16 @@ function hashAdminUserPasswords() {
 }
 
 function setup() {
-  const sheet = getSheet();
+  const sheet = getSheet();            // menambah kolom v2 yang belum ada (backward-compatible)
   applyStatusValidation(sheet);
   sheet.setColumnWidth(1, 160);
+  const headers = readHeaders(sheet);
+  ['Current Buffer Qty', 'Requested Buffer Qty', 'Buffer Difference'].forEach(function (h) {
+    const c = headers.indexOf(h) + 1;
+    if (c > 0) sheet.getRange(2, c, Math.max(sheet.getMaxRows() - 1, 1), 1).setNumberFormat('0');
+  });
+  const idCol = headers.indexOf('Request ID') + 1;
+  if (idCol > 0) sheet.getRange(1, idCol).setNote('Diisi otomatis: REQ-YYYYMMDD-001. Baris lama (sebelum v2) kosong.');
   getUsersSheet();
   notify(getSuperAdminHash() ? 'Setup selesai.' : 'Setup selesai. Password Super Admin BELUM diatur: menu OUTLET 23 Forecasting → Set Password Super Admin.');
 }

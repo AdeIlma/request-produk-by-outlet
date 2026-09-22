@@ -8,6 +8,7 @@
     const PAGE_SIZE = 25;
     const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
     const DEFAULT_STATUSES = ['Baru', 'Ditinjau', 'Disetujui', 'Ditolak', 'Sudah tersedia'];
+    const LEGACY_TYPE = '';   // baris lama tanpa kolom Request Type
 
     const S = { raw: [], filtered: [], rekap: [], rows: [], tab: 'rekap', page: 1, search: '', statuses: DEFAULT_STATUSES, ready: false };
     const $ = (id) => document.getElementById(id);
@@ -30,6 +31,22 @@
         return isNaN(d.getTime()) ? null : d;
     }
     function productKey(s) { return String(s || '').replace(/\s+/g, ' ').trim().toLowerCase(); }
+    function catLabel(s) { return s ? MasterProduct.label(s) : ''; }
+    function fmtQty(n) { return n == null || n === '' ? '–' : Number(n).toLocaleString('id-ID'); }
+    function fmtDiff(n) { if (n == null || n === '') return '–'; n = Number(n); return (n > 0 ? '+' : '') + n.toLocaleString('id-ID'); }
+    function toNum(v) { const s = String(v == null ? '' : v).trim(); if (s === '') return null; const n = Number(s); return isFinite(n) ? n : null; }
+    function typeClass(t) { return t === 'NEW_PRODUCT' ? 'is-new' : t === 'EXISTING_PRODUCT' ? 'is-existing' : t === 'STOCK_BUFFER' ? 'is-buffer' : 'is-legacy'; }
+    function typePill(t) { return '<span class="type-pill ' + typeClass(t) + '">' + esc(requestTypeLabel(t)) + '</span>'; }
+    /* Kolom "Detail" di tabel Semua Request */
+    function detailHtml(r) {
+        if (r.type === 'STOCK_BUFFER') {
+            const cls = r.diff > 0 ? 'is-up' : r.diff < 0 ? 'is-down' : '';
+            return '<span class="buf-inline ' + cls + '"><strong>' + esc(fmtQty(r.curBuf)) + ' → ' + esc(fmtQty(r.reqBuf)) + ' Qty</strong> <em>(' + esc(fmtDiff(r.diff)) + ')</em></span>';
+        }
+        if (r.type === 'NEW_PRODUCT') return '<span class="muted">Produk baru</span>';
+        if (r.type === 'EXISTING_PRODUCT') return '<span class="muted">Produk existing</span>';
+        return '';
+    }
     function debounce(fn, ms) { let t; return function () { clearTimeout(t); const a = arguments; t = setTimeout(() => fn.apply(null, a), ms); }; }
     function optionList(items, allLabel) {
         return '<option value="">' + esc(allLabel || 'Semua') + '</option>' +
@@ -118,6 +135,7 @@
             showNotice('error', 'Tidak dapat terhubung ke server. Coba klik Refresh.');
         } finally {
             setLoading(false);
+            fillCategoryFilter();
             fillStatusFilter();
             applyFilters();
         }
@@ -127,6 +145,11 @@
         const date = parseTs(clean(o['Timestamp']));
         if (!date) return null;
         const outlet = clean(o['Outlet']);
+        const type = clean(o['Request Type']).toUpperCase() || LEGACY_TYPE;
+        const cur = toNum(o['Current Buffer Qty']);
+        const req = toNum(o['Requested Buffer Qty']);
+        let diff = toNum(o['Buffer Difference']);
+        if (diff == null && cur != null && req != null) diff = req - cur;
         return {
             id: i,
             timestamp: clean(o['Timestamp']),
@@ -135,10 +158,20 @@
             region: clean(o['Region']) || findRegionByOutlet(outlet),
             outlet: outlet,
             pic: clean(o['PIC']),
-            product: clean(o['Product Request']),
+            product: clean(o['Product Request']) || clean(o['New Product Name']),
             category: clean(o['Product Category']),
             note: clean(o['Request Note']),
-            status: clean(o['Status']) || 'Baru'
+            status: clean(o['Status']) || 'Baru',
+            // v2
+            requestId: clean(o['Request ID']),
+            type: type,
+            typeLabel: requestTypeLabel(type),
+            code: clean(o['Product Code']),
+            masterCategory: clean(o['Master Category']),
+            unit: clean(o['Unit']),
+            curBuf: cur,
+            reqBuf: req,
+            diff: diff
         };
     }
 
@@ -146,12 +179,13 @@
     function initDashboard() {
         $('fRegion').innerHTML = optionList(getRegions().map((r) => ({ value: r, label: regionLabel(r) })));
         fillOutletFilter();
-        $('fCategory').innerHTML = optionList(PRODUCT_CATEGORIES.map((c) => ({ value: c.value, label: c.value })));
+        $('fType').innerHTML = optionList(REQUEST_TYPES.map((t) => ({ value: t.value, label: t.label })));
+        fillCategoryFilter();
         fillStatusFilter();
 
         $('fRegion').addEventListener('change', () => { fillOutletFilter(); applyFilters(); });
         $('fDate').addEventListener('change', () => { toggleCustomRange(); applyFilters(); });
-        ['fOutlet', 'fCategory', 'fStatus', 'fFrom', 'fTo'].forEach((id) => $(id).addEventListener('change', applyFilters));
+        ['fOutlet', 'fType', 'fCategory', 'fStatus', 'fFrom', 'fTo'].forEach((id) => $(id).addEventListener('change', applyFilters));
         $('btnReset').addEventListener('click', resetFilters);
         $('search').addEventListener('input', debounce((e) => { S.search = e.target.value; S.page = 1; renderTable(); }, 200));
         $('tabRekap').addEventListener('click', () => setTab('rekap'));
@@ -195,6 +229,24 @@
         if (cur && regions.some((r) => OUTLET_DATA[r].indexOf(cur) !== -1)) sel.value = cur;
     }
 
+    /* Kategori: gabungan nilai di data (tanpa beda huruf besar/kecil) + kategori v1 sebagai fallback */
+    function fillCategoryFilter() {
+        const sel = $('fCategory');
+        const cur = sel.value;
+        const map = new Map();
+        S.raw.forEach((r) => { const k = r.category.toUpperCase(); if (k && !map.has(k)) map.set(k, r.category); });
+        if (!map.size) PRODUCT_CATEGORIES.forEach((c) => map.set(c.value.toUpperCase(), c.value));
+        const items = Array.from(map.keys()).sort().map((k) => ({ value: k, label: catLabel(k) }));
+        sel.innerHTML = optionList(items);
+        sel.value = cur;
+        // baris lama tanpa jenis request → opsi tambahan di filter jenis
+        const hasLegacy = S.raw.some((r) => r.type === LEGACY_TYPE);
+        const tsel = $('fType');
+        const tcur = tsel.value;
+        tsel.innerHTML = optionList(REQUEST_TYPES.map((t) => ({ value: t.value, label: t.label })).concat(hasLegacy ? [{ value: '__LEGACY__', label: 'Request lama (tanpa jenis)' }] : []));
+        tsel.value = tcur;
+    }
+
     function fillStatusFilter() {
         const sel = $('fStatus');
         const cur = sel.value;
@@ -215,7 +267,7 @@
 
     function resetFilters() {
         $('fDate').value = 'all';
-        ['fRegion', 'fCategory', 'fStatus', 'fFrom', 'fTo'].forEach((id) => { $(id).value = ''; });
+        ['fRegion', 'fType', 'fCategory', 'fStatus', 'fFrom', 'fTo'].forEach((id) => { $(id).value = ''; });
         fillOutletFilter();
         $('fOutlet').value = '';
         toggleCustomRange();
@@ -225,7 +277,7 @@
     }
 
     function applyFilters() {
-        const f = { date: $('fDate').value, region: $('fRegion').value, outlet: $('fOutlet').value, cat: $('fCategory').value, status: $('fStatus').value, from: $('fFrom').value, to: $('fTo').value };
+        const f = { date: $('fDate').value, region: $('fRegion').value, outlet: $('fOutlet').value, type: $('fType').value, cat: $('fCategory').value, status: $('fStatus').value, from: $('fFrom').value, to: $('fTo').value };
         const t = new Date();
         const tY = ymd(t);
         let min = '';
@@ -239,7 +291,8 @@
             (!min || r.ymd >= min) && (!max || r.ymd <= max) &&
             (!f.region || r.region === f.region) &&
             (!f.outlet || r.outlet === f.outlet) &&
-            (!f.cat || r.category === f.cat) &&
+            (!f.type || (f.type === '__LEGACY__' ? r.type === LEGACY_TYPE : r.type === f.type)) &&
+            (!f.cat || r.category.toUpperCase() === f.cat) &&
             (!f.status || r.status === f.status));
 
         renderSummary();
@@ -251,15 +304,16 @@
     function buildRekap(rows) {
         const map = new Map();
         rows.forEach((r) => {
-            const key = productKey(r.product);
+            const key = r.code ? 'code:' + r.code : productKey(r.product);
             if (!key) return;
             let g = map.get(key);
-            if (!g) { g = { key: key, product: r.product, categories: new Map(), names: new Map(), count: 0, outlets: new Set(), last: r.date }; map.set(key, g); }
+            if (!g) { g = { key: key, code: r.code, product: r.product, categories: new Map(), names: new Map(), types: new Map(), count: 0, outlets: new Set(), last: r.date }; map.set(key, g); }
             g.count++;
+            g.types.set(r.type, (g.types.get(r.type) || 0) + 1);
             const nm = r.product.replace(/\s+/g, ' ').trim();
             g.names.set(nm, (g.names.get(nm) || 0) + 1);
             g.outlets.add(r.outlet);
-            if (r.category) g.categories.set(r.category, (g.categories.get(r.category) || 0) + 1);
+            if (r.category) g.categories.set(r.category.toUpperCase(), (g.categories.get(r.category.toUpperCase()) || 0) + 1);
             if (r.date > g.last) g.last = r.date;
         });
         return Array.from(map.values()).map((g) => {
@@ -269,7 +323,8 @@
             let label = g.product;
             let top = 0;
             g.names.forEach((n, nm) => { if (n > top) { top = n; label = nm; } });
-            return { key: g.key, product: label, category: cat, count: g.count, outlets: g.outlets.size, last: g.last };
+            const types = Array.from(g.types.entries()).sort((a, b) => b[1] - a[1]);
+            return { key: g.key, code: g.code, product: label, category: cat, types: types, count: g.count, outlets: g.outlets.size, last: g.last };
         }).sort((a, b) => b.count - a.count || b.outlets - a.outlets || b.last - a.last);
     }
 
@@ -280,6 +335,8 @@
         const tY = ymd(t);
         S.rekap = buildRekap(rows);
         $('sTotal').textContent = fmtNum(rows.length);
+        const byType = REQUEST_TYPES.map((t) => fmtNum(rows.filter((r) => r.type === t.value).length) + ' ' + t.label.toLowerCase()).join(' · ');
+        $('sTypes').textContent = rows.length ? byType : 'sesuai filter';
         $('sWeek').textContent = fmtNum(rows.filter((r) => r.ymd >= weekMin).length);
         $('sToday').textContent = rows.filter((r) => r.ymd === tY).length + ' hari ini';
         $('sOutlets').textContent = fmtNum(new Set(rows.map((r) => r.outlet)).size);
@@ -314,7 +371,7 @@
         let start;
         let pageRows;
         if (S.tab === 'rekap') {
-            const rows = S.rekap.filter((g) => matches([g.product, g.category].join(' ')));
+            const rows = S.rekap.filter((g) => matches([g.product, g.code, g.category, catLabel(g.category)].join(' ')));
             S.rows = rows;
             total = rows.length;
             const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -323,17 +380,18 @@
             pageRows = rows.slice(start, start + PAGE_SIZE);
             $('rekapBody').innerHTML = pageRows.length ? pageRows.map((g, i) => {
                 const rank = start + i + 1;
-                return '<tr data-product="' + esc(g.product) + '" tabindex="0">' +
-                    '<td class="strong"><span class="rank' + (rank <= 3 ? ' top' : '') + '">' + rank + '</span>' + esc(g.product) + '</td>' +
-                    '<td class="nowrap">' + esc(g.category || '–') + '</td>' +
+                return '<tr data-product="' + esc(g.code || g.product) + '" tabindex="0">' +
+                    '<td class="strong cell-subject"><span class="rank' + (rank <= 3 ? ' top' : '') + '">' + rank + '</span>' + esc(g.product) + (g.code ? '<small>' + esc(g.code) + '</small>' : '') + '</td>' +
+                    '<td class="nowrap">' + esc(catLabel(g.category) || '–') + '</td>' +
+                    '<td class="cell-types">' + g.types.map((t) => '<span class="type-pill ' + typeClass(t[0]) + '">' + esc(requestTypeLabel(t[0])) + (g.types.length > 1 ? ' ' + t[1] : '') + '</span>').join(' ') + '</td>' +
                     '<td class="num strong">' + fmtNum(g.count) + '</td>' +
                     '<td class="num">' + fmtNum(g.outlets) + '</td>' +
                     '<td class="nowrap">' + esc(fmtDate(g.last)) + '</td>' +
                 '</tr>';
-            }).join('') : '<tr class="empty-row"><td colspan="5">' + (S.raw.length ? 'Tidak ada data yang cocok dengan filter.' : 'Belum ada request dari outlet.') + '</td></tr>';
+            }).join('') : '<tr class="empty-row"><td colspan="6">' + (S.raw.length ? 'Tidak ada data yang cocok dengan filter.' : 'Belum ada request dari outlet.') + '</td></tr>';
             renderPager(pages);
         } else {
-            const rows = S.filtered.filter((r) => matches([r.product, r.category, r.outlet, r.pic, r.note, r.status].join(' ')))
+            const rows = S.filtered.filter((r) => matches([r.product, r.code, r.category, catLabel(r.category), r.typeLabel, r.requestId, r.outlet, shortOutletName(r.outlet), r.pic, r.note, r.status].join(' ')))
                 .sort((a, b) => b.date - a.date);
             S.rows = rows;
             total = rows.length;
@@ -346,11 +404,12 @@
                     '<td class="nowrap">' + esc(fmtDate(r.date)) + '<small>' + pad(r.date.getHours()) + ':' + pad(r.date.getMinutes()) + '</small></td>' +
                     '<td class="nowrap strong">' + esc(shortOutletName(r.outlet)) + '<small>' + esc(regionLabel(r.region)) + '</small></td>' +
                     '<td class="nowrap">' + esc(r.pic || '–') + '</td>' +
-                    '<td class="cell-subject"><strong>' + esc(r.product) + '</strong><small>' + esc(r.category) + '</small></td>' +
-                    '<td class="cell-feedback">' + (r.note ? '<span class="clamp">' + esc(r.note) + '</span>' : '<span class="muted">–</span>') + '</td>' +
+                    '<td class="nowrap">' + typePill(r.type) + (r.requestId ? '<small class="req-id">' + esc(r.requestId) + '</small>' : '') + '</td>' +
+                    '<td class="cell-subject"><strong>' + esc(r.product) + '</strong><small>' + esc([catLabel(r.category) || '–', r.code || '—', r.unit].filter(Boolean).join(' · ')) + '</small></td>' +
+                    '<td class="cell-feedback">' + detailHtml(r) + (r.note ? '<span class="clamp">' + esc(r.note) + '</span>' : '<span class="muted">–</span>') + '</td>' +
                     '<td><span class="status-pill ' + statusClass(r.status) + '">' + esc(r.status) + '</span></td>' +
                 '</tr>').join('')
-                : '<tr class="empty-row"><td colspan="6">' + (S.raw.length ? 'Tidak ada request yang cocok.' : 'Belum ada request dari outlet.') + '</td></tr>';
+                : '<tr class="empty-row"><td colspan="7">' + (S.raw.length ? 'Tidak ada request yang cocok.' : 'Belum ada request dari outlet.') + '</td></tr>';
             renderPager(pages);
         }
         const unit = S.tab === 'rekap' ? 'produk' : 'request';
@@ -385,11 +444,13 @@
         let head;
         let lines;
         if (S.tab === 'rekap') {
-            head = ['Produk', 'Kategori', 'Jumlah Request', 'Jumlah Outlet', 'Terakhir Direquest'];
-            lines = S.rows.map((g) => [g.product, g.category, g.count, g.outlets, ymd(g.last)]);
+            head = ['Produk', 'Kode Produk', 'Kategori', 'Jenis Request', 'Jumlah Request', 'Jumlah Outlet', 'Terakhir Direquest'];
+            lines = S.rows.map((g) => [g.product, g.code, g.category, g.types.map((t) => requestTypeLabel(t[0]) + ' ' + t[1]).join('; '), g.count, g.outlets, ymd(g.last)]);
         } else {
-            head = ['Timestamp', 'Region', 'Outlet', 'PIC', 'Product Request', 'Product Category', 'Request Note', 'Status'];
-            lines = S.rows.map((r) => [r.timestamp, r.region, r.outlet, r.pic, r.product, r.category, r.note, r.status]);
+            head = ['Timestamp', 'Request ID', 'Region', 'Outlet', 'PIC', 'Request Type', 'Product Request', 'Product Code', 'Product Category', 'Master Category', 'Unit',
+                    'Current Buffer Qty', 'Requested Buffer Qty', 'Buffer Difference', 'Request Note', 'Status'];
+            lines = S.rows.map((r) => [r.timestamp, r.requestId, r.region, r.outlet, r.pic, r.type, r.product, r.code, r.category, r.masterCategory, r.unit,
+                    r.curBuf == null ? '' : r.curBuf, r.reqBuf == null ? '' : r.reqBuf, r.diff == null ? '' : r.diff, r.note, r.status]);
         }
         const csv = [head].concat(lines).map((row) => row.map(csvCell).join(',')).join('\r\n');
         const now = new Date();
