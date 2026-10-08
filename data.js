@@ -29,7 +29,7 @@ const OUTLET_DATA = {
         "DTG JTG - PUDAK PAYUNG", "DTG JTG - KOPENG", "DTG JTG - SALATIGA", "DTG JTG - TERAS BOYOLALI",
         "DTG JTG - BOYOLALI", "DTG JTG - PEMALANG", "DTG JTG - PEKALONGAN", "DTG JTG - PEMALANG KOTA",
         "DTG JTG - WELERI", "DTG JTG - TEGAL", "DTG JTG - JEPARA", "DTG JTG - REMBANG",
-        "DTG JTG - PURWODADI", "DTG JTG - PATI", "DTG JTG - CEPU", "DTG JTG - BLORA"
+        "DTG JTG - PURWODADI", "DTG JTG - PATI", "DTG JTG - CEPU", "DTG JTG - BLORA", "DTG JTG - WIRADESA"
     ],
     "REGION JATIM": [
         "DTG JTM - BOJONEGORO", "DTG JTM - NGAGEL", "DTG JTM - KAPAS KRAMPUNG", "DTG JTM - BUKIT PALMA",
@@ -39,7 +39,7 @@ const OUTLET_DATA = {
         "DTG JTM - KEDIRI", "DTG JTM - WLINGI", "DTG JTM - NGAWI", "DTG JTM - MADIUN",
         "DTG JTM - PONOROGO", "DTG JTM - NGANJUK", "DTG JTM - PROBOLINGGO", "DTG JTM - LUMAJANG",
         "DTG JTM - KAHURIPAN", "DTG JTM - WIYUNG", "DTG JTM - RUNGKUT", "DTG JTM - LAMONGAN",
-        "DTG JTM - KENJERAN", "DTG JTM - HIDDEN BAR", "DTG JTM - JEMBER"
+        "DTG JTM - KENJERAN", "DTG JTM - HIDDEN BAR", "DTG JTM - JEMBER", "DTG JTM - BANYUWANGI", "DTG JTM - BONDOWOSO" 
     ],
     "REGION BALI": [
         "DTG BLI - LEGIAN", "DTG BLI - RENON", "DTG BLI - SESETAN", "DTG BLI - MARLBORO",
@@ -47,7 +47,9 @@ const OUTLET_DATA = {
         "DTG BLI - CANGGU", "DTG BLI - GWK", "DTG BLI - SEMINYAK", "DTG BLI - TABANAN"
     ],
     "REGION JAKARTA": [
-        "DTG JKT - KEMANG", "DTG JKT - KELAPA GADING", "DTG JKT - TEBET"
+        "DTG JKT - KEMANG", "DTG JKT - KELAPA GADING", "DTG JKT - TEBET", "DTG JKT - CEMPAKA PUTIH", "DTG JKT - CIDENG", "DTG JKT - TANJUNG DUREN",
+        "DTG JKT - MANGGA BESAR", "DTG JKT - RADIO DALAM", "DTG JKT - PESANGGRAHAN", "DTG JKT - RAWAMANGUN", "DTG JKT - MUARA KARANG", "DTG JKT - JAGAKARSA"
+        "DTG JKT - BENHIL", "DTG JKT - DUREN SAWIT", "DTG JKT - LEBAK BULUS", "DTG JKT - PIK 1"
     ]
 };
 
@@ -117,13 +119,6 @@ const REQUEST_TYPES = [
         badge: "Sudah ada di sistem",
         desc: "Produk sudah tersedia di sistem, tetapi membutuhkan request atau perubahan tertentu.",
         icon: "package"
-    },
-    {
-        value: "STOCK_BUFFER",
-        label: "Stock Buffer",
-        badge: "Perubahan stock",
-        desc: "Ajukan perubahan jumlah stock buffer untuk produk yang sudah tersedia.",
-        icon: "box"
     }
 ];
 
@@ -132,6 +127,7 @@ function requestTypeLabel(value) {
     for (var i = 0; i < REQUEST_TYPES.length; i++) {
         if (REQUEST_TYPES[i].value === v) return REQUEST_TYPES[i].label;
     }
+    if (v === "STOCK_BUFFER") return "Stock Buffer";   // data lama sebelum opsi ini dihapus
     return v ? v : "Request Produk";   // baris lama (sebelum ada jenis request)
 }
 
